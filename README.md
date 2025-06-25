@@ -1,8 +1,8 @@
 Desafio Técnico - Estágio DevOps
-Esse repositório tem a solução completa para o desafio de estágio DevOps. A ideia aqui é criar um serviço em Golang, colocar ele dentro de contêineres e deixar o processo de colocar no ar (deploy) automático.
+Esse repositório tem a solução completa para o desafio de estágio DevOps. A ideia aqui é criar um serviço em Golang, colocar ele dentro de contêineres e deixar o processo de colocar no ar (deploy) automático!!
 
-Como funciona a estrutura do projeto
-O projeto usa contêineres Docker que rodam juntos com ajuda do Docker Compose.
+Como funciona a estrutura do projeto...
+O projeto usa contêineres Docker que rodam juntos com ajuda do Docker Compose,
 
 http-server-projeto-korp: é um serviço feito em Go que responde com JSON na porta 8080.
 
