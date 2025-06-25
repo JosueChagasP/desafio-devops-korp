@@ -1,0 +1,127 @@
+# playbook.yml
+# Este playbook automatiza a instalação do Docker e o deploy da aplicação Projeto Korp.
+
+- name: Deploy Completo do Projeto Korp
+  hosts: localhost
+  connection: local
+  become: yes # Permite a execução de comandos com privilégios de administrador (sudo)
+
+  vars:
+    # Define o diretório de destino para não repetir
+    deploy_dir: "/home/{{ lookup('env', 'USER') }}/projeto-korp-automated"
+    # Define o diretório de origem para ser mais claro
+    source_dir: "{{ playbook_dir }}/.."
+
+  tasks:
+    - name: 1. Instalar dependências (apt)
+      ansible.builtin.apt:
+        name: [ca-certificates, curl]
+        state: present
+        update_cache: yes
+
+    - name: 2. Criar diretório para a chave GPG do Docker
+      ansible.builtin.file:
+        path: /etc/apt/keyrings
+        state: directory
+        mode: '0755'
+
+    - name: 3. Adicionar a chave GPG oficial do Docker
+      ansible.builtin.get_url:
+        url: https://download.docker.com/linux/ubuntu/gpg
+        dest: /etc/apt/keyrings/docker.asc
+        mode: '0644'
+        force: yes
+
+    - name: 4. Adicionar o repositório do Docker
+      ansible.builtin.apt_repository:
+        repo: "deb [arch={{ ansible_architecture }} signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu {{ ansible_lsb.codename }} stable"
+        state: present
+        filename: docker
+
+    - name: 5. Instalar pacotes do Docker
+      ansible.builtin.apt:
+        name: [docker-ce, docker-ce-cli, containerd.io, docker-buildx-plugin, docker-compose-plugin]
+        state: present
+        update_cache: yes
+
+    - name: 6. Adicionar usuário ao grupo docker
+      ansible.builtin.user:
+        name: "{{ lookup('env', 'USER') }}"
+        groups: docker
+        append: yes
+
+    - name: 7. Limpar e criar diretório de deploy
+      ansible.builtin.file:
+        path: "{{ deploy_dir }}"
+        state: absent # Apaga o diretório antigo para uma instalação limpa
+      become: no
+
+    - name: 8. Recriar diretório de deploy
+      ansible.builtin.file:
+        path: "{{ deploy_dir }}"
+        state: directory # Cria o diretório novamente
+        owner: "{{ lookup('env', 'USER') }}"
+        group: "{{ lookup('env', 'USER') }}"
+        mode: '0755'
+      become: no
+
+    - name: 9. Copiar os arquivos e diretórios do projeto
+      ansible.builtin.copy:
+        src: "{{ source_dir }}/{{ item }}"
+        dest: "{{ deploy_dir }}/"
+      loop:
+        - app
+        - nginx-config
+        - docker-compose.yml
+      become: no
+
+    - name: 10. Remover a linha 'version' obsoleta do docker-compose.yml
+      ansible.builtin.lineinfile:
+        path: "{{ deploy_dir }}/docker-compose.yml"
+        regexp: '^version:'
+        state: absent
+      become: no
+
+    - name: 11. Forçar a remoção de containers antigos com nomes conflitantes
+      community.docker.docker_container:
+        name: "{{ item }}"
+        state: absent
+        force_kill: yes
+      loop:
+        - go-app-korp
+        - nginx-proxy-korp
+      become: no
+      ignore_errors: yes # Ignora o erro se o container não existir
+
+    - name: 12. Garantir que o projeto esteja parado antes de iniciar (docker compose down)
+      community.docker.docker_compose_v2:
+        project_src: "{{ deploy_dir }}"
+        state: absent # Garante que tudo seja derrubado antes de subir novamente
+      become: no
+
+    - name: 13. Executar Docker Compose para subir o ambiente (docker compose up)
+      community.docker.docker_compose_v2:
+        project_src: "{{ deploy_dir }}"
+        state: present
+        build: always
+      become: no
+
+    - name: 14. Aguardar 10 segundos para garantir que os serviços estejam estáveis
+      ansible.builtin.pause:
+        seconds: 10
+
+    - name: 15. Testar o endpoint da aplicação
+      ansible.builtin.uri:
+        url: http://localhost:80
+        status_code: 200
+        return_content: yes # CORREÇÃO: Garante que o corpo da resposta seja retornado
+      register: service_status
+      become: no
+
+    - name: 16. Validar o conteúdo da resposta
+      ansible.builtin.assert:
+        that:
+          - "'Projeto Korp' in service_status.content"
+        success_msg: "DEPLOY CONCLUÍDO COM SUCESSO! O serviço está no ar e respondendo corretamente."
+        fail_msg: "FALHA NO DEPLOY! O serviço não retornou o conteúdo esperado."
+      become: no

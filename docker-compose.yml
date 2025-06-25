@@ -1,0 +1,29 @@
+version: '3.8'
+
+services:
+  # Container 1: Serviço em Golang
+  http-server-projeto-korp:
+    build: ./app
+    container_name: go-app-korp
+    networks:
+      - projeto-korp-network
+    expose:
+      - "8080"
+    # Nenhuma porta é exposta ao host, como solicitado
+    
+  # Container 2: NGINX como Proxy Reverso
+  nginx:
+    image: nginx:latest
+    container_name: nginx-proxy-korp
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx-config:/etc/nginx/conf.d
+    networks:
+      - projeto-korp-network
+    depends_on:
+      - http-server-projeto-korp
+
+networks:
+  projeto-korp-network:
+    driver: bridge
